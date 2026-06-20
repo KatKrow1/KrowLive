@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Check, Loader2, MapPin, Radar, Sparkles } from "lucide-react";
 import { api, JobStatus } from "@/lib/api";
 import { useAppContext } from "@/lib/context";
-import { AU_CITIES, AU_STATES, CA_CITIES, CA_PROVINCES, INDUSTRIES } from "@/lib/constants";
+import { AU_STATES, CA_PROVINCES, citiesForStates, defaultCitiesForCountry, defaultStatesForCountry, INDUSTRIES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 const STEPS = ["Industry", "Location", "Review & Run"];
@@ -15,19 +15,29 @@ export default function DiscoveryPage() {
   const [step, setStep] = useState(0);
   const [industry, setIndustry] = useState("Media");
   const [customIndustry, setCustomIndustry] = useState("");
-  const [selectedStates, setSelectedStates] = useState<string[]>(country === "CA" ? ["Ontario"] : ["NSW"]);
+  const [selectedStates, setSelectedStates] = useState<string[]>(() => defaultStatesForCountry(country));
+  const [selectedCities, setSelectedCities] = useState<string[]>(() => defaultCitiesForCountry(country));
   const [maxResults, setMaxResults] = useState(3);
   const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
 
   const states = country === "CA" ? [...CA_PROVINCES] : [...AU_STATES];
-  const cityMap = country === "CA" ? CA_CITIES : AU_CITIES;
   const resolvedIndustry = industry === "Custom" ? customIndustry.trim() : industry;
 
   useEffect(() => {
-    setSelectedStates(country === "CA" ? ["Ontario"] : ["NSW"]);
+    setSelectedStates(defaultStatesForCountry(country));
+    setSelectedCities(defaultCitiesForCountry(country));
   }, [country]);
+
+  const availableCities = citiesForStates(country, selectedStates);
+
+  useEffect(() => {
+    setSelectedCities((prev) => {
+      const kept = prev.filter((c) => availableCities.includes(c));
+      return kept.length > 0 ? kept : availableCities;
+    });
+  }, [selectedStates, country, availableCities.join("|")]);
 
   useEffect(() => {
     let interval: ReturnType<typeof setInterval> | undefined;
@@ -51,7 +61,19 @@ export default function DiscoveryPage() {
     };
   }, []);
 
-  const cities = selectedStates.flatMap((s) => cityMap[s] ?? []);
+  const cities = selectedCities.filter((c) => availableCities.includes(c));
+
+  const toggleState = (state: string) => {
+    setSelectedStates((prev) =>
+      prev.includes(state) ? prev.filter((s) => s !== state) : [...prev, state]
+    );
+  };
+
+  const toggleCity = (city: string) => {
+    setSelectedCities((prev) =>
+      prev.includes(city) ? prev.filter((c) => c !== city) : [...prev, city]
+    );
+  };
 
   const run = async () => {
     setError(null);
@@ -141,17 +163,16 @@ export default function DiscoveryPage() {
               <h2 className="flex items-center gap-2 font-medium">
                 <MapPin className="h-4 w-4 text-primary" /> Choose location
               </h2>
+              <p className="text-sm text-muted-foreground">
+                Country: <span className="text-foreground">{country === "CA" ? "Canada (CAD)" : "Australia (AUD)"}</span>
+              </p>
               <p className="text-sm text-muted-foreground">{country === "CA" ? "Provinces" : "States"}</p>
               <div className="flex flex-wrap gap-2">
                 {states.map((s) => (
                   <button
                     key={s}
                     type="button"
-                    onClick={() =>
-                      setSelectedStates((prev) =>
-                        prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]
-                      )
-                    }
+                    onClick={() => toggleState(s)}
                     className={cn(
                       "rounded-lg border px-3 py-2 text-sm",
                       selectedStates.includes(s) ? "border-accent/50 bg-accent/10 text-accent" : "border-border"
@@ -161,6 +182,26 @@ export default function DiscoveryPage() {
                   </button>
                 ))}
               </div>
+              <p className="text-sm text-muted-foreground">Cities</p>
+              {availableCities.length === 0 ? (
+                <p className="text-xs text-muted-foreground">Select at least one {country === "CA" ? "province" : "state"} to see cities.</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {availableCities.map((city) => (
+                    <button
+                      key={city}
+                      type="button"
+                      onClick={() => toggleCity(city)}
+                      className={cn(
+                        "rounded-lg border px-3 py-2 text-sm",
+                        selectedCities.includes(city) ? "border-accent/50 bg-accent/10 text-accent" : "border-border"
+                      )}
+                    >
+                      {city}
+                    </button>
+                  ))}
+                </div>
+              )}
               <div>
                 <label className="text-sm text-muted-foreground">Max results per city</label>
                 <input
@@ -240,7 +281,7 @@ export default function DiscoveryPage() {
           ) : (
             <button
               type="button"
-              disabled={running || !resolvedIndustry || selectedStates.length === 0}
+              disabled={running || !resolvedIndustry || selectedStates.length === 0 || cities.length === 0}
               onClick={run}
               className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
             >

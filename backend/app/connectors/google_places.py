@@ -64,9 +64,29 @@ def _industry_query(industry: str) -> str:
     return INDUSTRY_KEYWORDS.get(key, industry)
 
 
-def _parse_address_components(components: list[dict[str, Any]]) -> tuple[str | None, str | None, str]:
+AU_STATE_GEO_NAMES: dict[str, str] = {
+    "NSW": "New South Wales",
+    "VIC": "Victoria",
+    "QLD": "Queensland",
+    "WA": "Western Australia",
+    "SA": "South Australia",
+    "TAS": "Tasmania",
+    "ACT": "Australian Capital Territory",
+    "NT": "Northern Territory",
+}
+
+
+def _geocode_state(state: str, country: str) -> str:
+    if country == "AU" and state in AU_STATE_GEO_NAMES:
+        return AU_STATE_GEO_NAMES[state]
+    return state
+
+
+def _parse_address_components(
+    components: list[dict[str, Any]], *, default_country: str = "CA"
+) -> tuple[str | None, str | None, str]:
     city = state = None
-    country = "CA"
+    country = default_country
 
     for comp in components:
         types = comp.get("types", [])
@@ -75,7 +95,7 @@ def _parse_address_components(components: list[dict[str, Any]]) -> tuple[str | N
         elif "administrative_area_level_1" in types:
             state = comp.get("long_name")
         elif "country" in types:
-            country = comp.get("short_name", "CA")
+            country = comp.get("short_name", default_country)
 
     return city, state, country
 
@@ -105,7 +125,8 @@ def geocode_location(
     country: str = "CA",
 ) -> tuple[float, float]:
     country_name = "Canada" if country == "CA" else "Australia"
-    query = f"{city}, {state}, {country_name}"
+    geo_state = _geocode_state(state, country)
+    query = f"{city}, {geo_state}, {country_name}"
     results = client.geocode(query)
     if not results:
         raise ValueError(f"Could not geocode location: {query}")
@@ -125,12 +146,13 @@ def search_places(
     client = _client()
     keyword = _industry_query(industry)
     country_name = "Canada" if country == "CA" else "Australia"
+    geo_state = _geocode_state(state, country)
     lat, lng = geocode_location(client, city=city, state=state, country=country)
 
     seen_ids: set[str] = set()
     candidates: list[dict[str, Any]] = []
 
-    text_query = f"{keyword} in {city}, {state}, {country_name}"
+    text_query = f"{keyword} in {city}, {geo_state}, {country_name}"
     text_response = client.places(query=text_query)
     candidates.extend(text_response.get("results", []))
 
@@ -155,7 +177,9 @@ def search_places(
 
         detail = detail_resp.get("result", {})
         components = detail.get("address_components", [])
-        parsed_city, parsed_state, parsed_country = _parse_address_components(components)
+        parsed_city, parsed_state, parsed_country = _parse_address_components(
+            components, default_country=country
+        )
 
         if parsed_country and parsed_country != country:
             continue

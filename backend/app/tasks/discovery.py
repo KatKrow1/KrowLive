@@ -40,13 +40,20 @@ def _resolve_city_targets(request: DiscoveryRequest) -> list[dict[str, str]]:
     mapping = CA_STATE_CITIES if request.country == "CA" else AU_STATE_CITIES
     targets: list[dict[str, str]] = []
 
-    if request.cities and request.states:
+    def _state_for_city(city: str) -> str:
+        for state in request.states or []:
+            if city in mapping.get(state, []):
+                return state
+        for state, cities in mapping.items():
+            if city in cities:
+                return state
+        return request.states[0] if request.states else ""
+
+    if request.cities:
         for city in request.cities:
-            for state in request.states:
-                targets.append({"city": city, "state": state, "country": request.country})
-    elif request.cities:
-        for city in request.cities:
-            targets.append({"city": city, "state": request.states[0] if request.states else "", "country": request.country})
+            targets.append(
+                {"city": city, "state": _state_for_city(city), "country": request.country}
+            )
     elif request.states:
         for state in request.states:
             for city in mapping.get(state, []):

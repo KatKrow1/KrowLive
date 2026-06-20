@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Loader2, Radar } from "lucide-react";
 import { api, JobStatus } from "@/lib/api";
-import { AU_CITIES, AU_STATES, CA_CITIES, CA_PROVINCES, INDUSTRIES } from "@/lib/constants";
+import { AU_STATES, CA_PROVINCES, citiesForStates, defaultCitiesForCountry, defaultStatesForCountry, INDUSTRIES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 type DiscoveryPanelProps = {
@@ -15,23 +15,37 @@ type DiscoveryPanelProps = {
 export function DiscoveryPanel({ country, jobStatus, onStarted }: DiscoveryPanelProps) {
   const [industry, setIndustry] = useState("Media");
   const [customIndustry, setCustomIndustry] = useState("");
-  const [selectedStates, setSelectedStates] = useState<string[]>(
-    country === "CA" ? ["Ontario"] : ["NSW"]
-  );
+  const [selectedStates, setSelectedStates] = useState<string[]>(() => defaultStatesForCountry(country));
+  const [selectedCities, setSelectedCities] = useState<string[]>(() => defaultCitiesForCountry(country));
   const [maxResults, setMaxResults] = useState(3);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const states = country === "CA" ? [...CA_PROVINCES] : [...AU_STATES];
-  const cityMap = country === "CA" ? CA_CITIES : AU_CITIES;
 
   useEffect(() => {
-    setSelectedStates(country === "CA" ? ["Ontario"] : ["NSW"]);
+    setSelectedStates(defaultStatesForCountry(country));
+    setSelectedCities(defaultCitiesForCountry(country));
   }, [country]);
+
+  const availableCities = citiesForStates(country, selectedStates);
+
+  useEffect(() => {
+    setSelectedCities((prev) => {
+      const kept = prev.filter((c) => availableCities.includes(c));
+      return kept.length > 0 ? kept : availableCities;
+    });
+  }, [selectedStates, country, availableCities.join("|")]);
 
   const toggleState = (state: string) => {
     setSelectedStates((prev) =>
       prev.includes(state) ? prev.filter((s) => s !== state) : [...prev, state]
+    );
+  };
+
+  const toggleCity = (city: string) => {
+    setSelectedCities((prev) =>
+      prev.includes(city) ? prev.filter((c) => c !== city) : [...prev, city]
     );
   };
 
@@ -47,10 +61,14 @@ export function DiscoveryPanel({ country, jobStatus, onStarted }: DiscoveryPanel
       setError("Select at least one province/state");
       return;
     }
+    const cities = selectedCities.filter((c) => availableCities.includes(c));
+    if (cities.length === 0) {
+      setError("Select at least one city");
+      return;
+    }
     setError(null);
     setLoading(true);
     try {
-      const cities = selectedStates.flatMap((s) => cityMap[s] ?? []);
       await api.runDiscovery({
         industry: resolvedIndustry,
         country,
@@ -130,6 +148,31 @@ export function DiscoveryPanel({ country, jobStatus, onStarted }: DiscoveryPanel
               </button>
             ))}
           </div>
+        </div>
+
+        <div>
+          <label className="mb-2 block text-sm text-muted-foreground">Cities (multi-select)</label>
+          {availableCities.length === 0 ? (
+            <p className="text-xs text-muted-foreground">Select a {country === "CA" ? "province" : "state"} first.</p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {availableCities.map((city) => (
+                <button
+                  key={city}
+                  type="button"
+                  onClick={() => toggleCity(city)}
+                  className={cn(
+                    "rounded-lg border px-3 py-1.5 text-sm",
+                    selectedCities.includes(city)
+                      ? "border-fuchsia-500 bg-fuchsia-500/20 text-fuchsia-200"
+                      : "border-border bg-muted/40 text-muted-foreground"
+                  )}
+                >
+                  {city}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <div>

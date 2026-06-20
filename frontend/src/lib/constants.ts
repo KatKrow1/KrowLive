@@ -21,6 +21,34 @@ export const CA_PROVINCES = [
 
 export const AU_STATES = ["NSW", "VIC", "QLD", "WA", "SA", "TAS", "ACT", "NT"] as const;
 
+/** Long names for geocoding / display where abbreviations are used in the UI. */
+export const AU_STATE_LABELS: Record<string, string> = {
+  NSW: "New South Wales",
+  VIC: "Victoria",
+  QLD: "Queensland",
+  WA: "Western Australia",
+  SA: "South Australia",
+  TAS: "Tasmania",
+  ACT: "Australian Capital Territory",
+  NT: "Northern Territory",
+};
+
+export function citiesForStates(
+  country: "CA" | "AU",
+  selectedStates: string[],
+): string[] {
+  const map = country === "CA" ? CA_CITIES : AU_CITIES;
+  return selectedStates.flatMap((s) => map[s] ?? []);
+}
+
+export function defaultStatesForCountry(country: "CA" | "AU"): string[] {
+  return country === "CA" ? ["Ontario"] : ["NSW"];
+}
+
+export function defaultCitiesForCountry(country: "CA" | "AU"): string[] {
+  return citiesForStates(country, defaultStatesForCountry(country));
+}
+
 export const CA_CITIES: Record<string, string[]> = {
   Ontario: ["Toronto", "Ottawa"],
   "British Columbia": ["Vancouver"],
