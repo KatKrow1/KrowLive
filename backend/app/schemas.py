@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 CountryCode = Literal["CA", "AU"]
 CompanySource = Literal["google_places", "csv_upload"]
 ConsentStatus = Literal["unknown", "opted_in", "opted_out"]
+ExtractionConfidence = Literal["high", "medium", "low"]
 JobStatus = Literal["idle", "running", "completed", "failed"]
 
 
@@ -29,6 +30,7 @@ class Executive(BaseModel):
     phone: str | None = None
     linkedin_url: str | None = None
     consent_status: ConsentStatus = "unknown"
+    extraction_confidence: ExtractionConfidence = "low"
 
 
 class Company(BaseModel):

@@ -18,6 +18,21 @@ export default function CompaniesPage() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Company | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+
+  const handleSelect = async (company: Company) => {
+    setSelected(company);
+    if (!company.id) return;
+    setDetailLoading(true);
+    try {
+      const full = await api.getCompany(company.id);
+      setSelected(full);
+    } catch {
+      /* keep list row data if detail fetch fails */
+    } finally {
+      setDetailLoading(false);
+    }
+  };
 
   useEffect(() => {
     setPage(1);
@@ -43,7 +58,7 @@ export default function CompaniesPage() {
         <p className="text-sm text-muted-foreground">{total} leads in pipeline</p>
       </div>
 
-      <CompaniesTable companies={companies} loading={loading} onSelect={setSelected} />
+      <CompaniesTable companies={companies} loading={loading} onSelect={handleSelect} />
 
       {totalPages > 1 && (
         <div className="flex items-center justify-between">
@@ -77,7 +92,7 @@ export default function CompaniesPage() {
         </div>
       )}
 
-      <CompanySheet company={selected} onClose={() => setSelected(null)} />
+      <CompanySheet company={selected} loading={detailLoading} onClose={() => setSelected(null)} />
     </div>
   );
 }

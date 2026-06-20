@@ -77,6 +77,7 @@ CREATE TABLE IF NOT EXISTS executives (
   phone           TEXT,
   linkedin_url    TEXT,
   consent_status  consent_status NOT NULL DEFAULT 'unknown',
+  extraction_confidence TEXT NOT NULL DEFAULT 'low' CHECK (extraction_confidence IN ('high', 'medium', 'low')),
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

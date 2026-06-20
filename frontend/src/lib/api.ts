@@ -15,6 +15,7 @@ export type Executive = {
   phone?: string | null;
   linkedin_url?: string | null;
   consent_status: "unknown" | "opted_in" | "opted_out";
+  extraction_confidence?: "high" | "medium" | "low";
 };
 
 export type Company = {
@@ -28,6 +29,7 @@ export type Company = {
   website: string;
   category?: string | null;
   google_rating?: number | null;
+  google_review_count?: number | null;
   lead_score?: number | null;
   summary?: string | null;
   tech_stack_signals?: string[];
@@ -114,6 +116,7 @@ export const api = {
     });
     return request<CompanyListResponse>(`/companies?${qs.toString()}`);
   },
+  getCompany: (id: string) => request<Company>(`/companies/${id}`),
   getStatus: () => request<JobStatus>("/status"),
   runDiscovery: (body: object) =>
     request<JobStatus>("/discovery/run", {

@@ -11,6 +11,7 @@ from supabase import Client
 
 from app.connectors.website_intelligence import WebsiteIntelResult, scrape_website_sync
 from app.enrichment import enrich_company
+from app.supabase_retry import supabase_write_retry
 
 logger = logging.getLogger("krowlive.pipeline")
 
@@ -54,7 +55,10 @@ def _upsert_company(db: Client, payload: dict[str, Any]) -> dict[str, Any] | Non
     attempt = dict(payload)
     for _ in range(len(optional_columns) + 1):
         try:
-            result = db.table("companies").upsert(attempt, on_conflict="website").execute()
+            result = supabase_write_retry(
+                lambda: db.table("companies").upsert(attempt, on_conflict="website").execute(),
+                operation=f"upsert company {attempt.get('website', '')}",
+            )
             if result.data:
                 return result.data[0]
             return None
@@ -113,7 +117,10 @@ def process_company_record(
             return is_new, False
 
         company_id = row["id"]
-        db.table("executives").delete().eq("company_id", company_id).execute()
+        supabase_write_retry(
+            lambda: db.table("executives").delete().eq("company_id", company_id).execute(),
+            operation=f"delete executives for {website_key}",
+        )
 
         exec_rows: list[dict[str, Any]] = [
             {
@@ -124,12 +131,27 @@ def process_company_record(
                 "phone": exec_contact.phone,
                 "linkedin_url": exec_contact.linkedin_url,
                 "consent_status": exec_contact.consent_status,
+                "extraction_confidence": exec_contact.extraction_confidence,
             }
             for exec_contact in intel.executives
         ]
 
         if exec_rows:
-            db.table("executives").insert(exec_rows).execute()
+            try:
+                supabase_write_retry(
+                    lambda rows=exec_rows: db.table("executives").insert(rows).execute(),
+                    operation=f"insert executives for {website_key}",
+                )
+            except Exception as exc:
+                if "extraction_confidence" in str(exc):
+                    for row in exec_rows:
+                        row.pop("extraction_confidence", None)
+                    supabase_write_retry(
+                        lambda rows=exec_rows: db.table("executives").insert(rows).execute(),
+                        operation=f"insert executives for {website_key}",
+                    )
+                else:
+                    raise
 
         return is_new, True
     except Exception as exc:

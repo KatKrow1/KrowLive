@@ -47,6 +47,7 @@ def _row_to_company(row: dict[str, Any]) -> Company:
                 phone=e.get("phone"),
                 linkedin_url=e.get("linkedin_url"),
                 consent_status=e.get("consent_status", "unknown"),
+                extraction_confidence=e.get("extraction_confidence", "low"),
             )
             for e in execs
         ],
@@ -151,3 +152,25 @@ def chart_by_state(country: str | None = Query(None, pattern="^(CA|AU)$")):
     except Exception as exc:
         logger.exception("Failed to build chart data")
         raise HTTPException(status_code=500, detail=f"Could not build chart: {exc}") from exc
+
+
+@router.get("/{company_id}", response_model=Company)
+def get_company(company_id: str):
+    try:
+        db = get_supabase()
+        response = (
+            db.table("companies")
+            .select("*, executives(*)")
+            .eq("id", company_id)
+            .limit(1)
+            .execute()
+        )
+        rows = response.data or []
+        if not rows:
+            raise HTTPException(status_code=404, detail="Company not found")
+        return _row_to_company(dict(rows[0]))
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Failed to fetch company %s", company_id)
+        raise HTTPException(status_code=500, detail=f"Could not fetch company: {exc}") from exc

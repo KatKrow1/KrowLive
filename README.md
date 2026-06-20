@@ -1,12 +1,12 @@
 # KrowLive
 
-B2B lead intelligence platform for **Canada and Australia**, focused on media, marketing, advertising, and PR companies. KrowLive discovers businesses via Google Places, scrapes their websites for contact and social signals, enriches leads with Claude (or rule-based fallback), and stores results in Supabase for review in a Next.js dashboard.
+B2B lead intelligence platform for **Canada and Australia**, focused on media, marketing, advertising, and PR companies. KrowLive discovers businesses via Google Places, scrapes their websites for contact and social signals, enriches leads with rule-based scoring (or an optional custom AI provider), and stores results in Supabase for review in a Next.js dashboard.
 
 ## Tech stack
 
 | Layer | Stack |
 |-------|-------|
-| Backend | Python 3.12, FastAPI, Playwright, BeautifulSoup4, httpx, googlemaps, anthropic, supabase-py |
+| Backend | Python 3.12, FastAPI, Playwright, BeautifulSoup4, httpx, googlemaps, supabase-py |
 | Frontend | Next.js 14 (App Router), TypeScript, Tailwind CSS, framer-motion, recharts |
 | Database | Supabase (PostgreSQL) |
 
@@ -16,7 +16,7 @@ B2B lead intelligence platform for **Canada and Australia**, focused on media, m
 - Node.js 18+
 - A Supabase project
 - Google Places API key (Places API enabled)
-- Anthropic API key (optional — enrichment falls back to rules if unset)
+- Optional: custom enrichment API (see `ENRICHMENT_PROVIDER` below)
 
 ## Database setup (required before first use)
 
@@ -38,7 +38,8 @@ python -m venv venv
 .\venv\Scripts\playwright install chromium
 copy .env.example .env
 # Edit .env with your keys
-.\venv\Scripts\uvicorn app.main:app --reload --port 8000
+.\scripts\start-backend.ps1
+# Or: .\venv\Scripts\uvicorn app.main:app --port 8000
 ```
 
 API docs: http://localhost:8000/docs
@@ -50,7 +51,8 @@ cd frontend
 npm install
 copy .env.example .env.local
 # Edit .env.local if backend is not on localhost:8000
-npm run dev
+.\scripts\start-frontend.ps1
+# Or: npm run dev
 ```
 
 Dashboard: http://localhost:3000
@@ -66,9 +68,16 @@ Admin CSV upload (internal): http://localhost:3000/admin/upload
 | `SUPABASE_URL` | Yes | Supabase project URL |
 | `SUPABASE_KEY` | Yes | Supabase API key |
 | `GOOGLE_PLACES_API_KEY` | Yes | Google Places API key |
-| `ANTHROPIC_API_KEY` | No | Claude enrichment (optional) |
+| `ENRICHMENT_PROVIDER` | No | `none` (default, rule-based) or `custom` |
+| `ENRICHMENT_API_KEY` | No | Bearer token for custom enrichment API |
+| `ENRICHMENT_API_URL` | No | POST endpoint for custom enrichment |
 | `CORS_ORIGINS` | No | Allowed frontend origins (comma-separated) |
 | `DEBUG` | No | Include tracebacks in JSON error responses |
+
+### Enrichment providers
+
+- **`none` (default):** Rule-based lead scoring from data completeness (email, phone, named contact, active site, Google rating, social links) plus a templated summary from scraped website text. No external AI call.
+- **`custom`:** POSTs scraped signals to `ENRICHMENT_API_URL` with `Authorization: Bearer {ENRICHMENT_API_KEY}`. Expects JSON `{"summary": "...", "lead_score": 0-100}`. Falls back to rule-based on any failure.
 
 ### Frontend (`frontend/.env.local`)
 
@@ -92,7 +101,17 @@ Scraped contact data includes a `consent_status` field on executives. Verify con
 **500 on `/discovery/run` after code changes:** Restart uvicorn completely. On Windows, `--reload` can leave orphaned worker processes holding port 8000 with stale code. Kill all `python.exe` uvicorn workers, then start fresh:
 
 ```powershell
+cd backend
 .\venv\Scripts\uvicorn app.main:app --port 8000
 ```
 
+Or use the startup script (kills stale port-8000 processes first, cleans up on Ctrl+C):
+
+```powershell
+.\scripts\start-backend.ps1              # stable, no reload
+.\scripts\start-backend.ps1 -Reload      # auto-reload while editing Python
+```
+
 **CORS / "Failed to fetch":** Ensure your frontend origin (e.g. `http://localhost:3000`) is listed in `CORS_ORIGINS` in `backend/.env`.
+
+**Orphaned uvicorn on Windows:** Avoid running the backend in Cursor/agent background shells — they can exit after ~5 minutes and leave the worker running. Use a normal terminal with `.\scripts\start-backend.ps1`. With `--reload`, uvicorn uses `multiprocessing.spawn`; if the parent reloader is killed without a clean shutdown, worker processes can survive detached. Prefer **no `--reload` for testing**; use `-Reload` only during active Python development.

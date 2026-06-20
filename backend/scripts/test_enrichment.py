@@ -1,4 +1,4 @@
-"""Test enrichment with and without Anthropic API key."""
+"""Test rule-based enrichment (default ENRICHMENT_PROVIDER=none)."""
 
 from __future__ import annotations
 

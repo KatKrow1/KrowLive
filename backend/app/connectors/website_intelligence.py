@@ -39,32 +39,127 @@ TEAM_PATH_RE = re.compile(
     re.IGNORECASE,
 )
 
-INVALID_NAME_TOKENS = frozenset(
+NAME_DENYLIST = frozenset(
     {
+        "follow",
+        "linkedin",
+        "twitter",
+        "facebook",
+        "instagram",
+        "youtube",
+        "menu",
+        "home",
+        "about",
+        "contact",
+        "services",
+        "blog",
+        "news",
+        "login",
+        "subscribe",
+        "share",
+        "project",
+        "team",
+        "careers",
+        "privacy",
+        "terms",
+        "cookie",
+        "cookies",
+        "copyright",
+        "read",
+        "more",
+        "learn",
+        "view",
+        "click",
+        "here",
+        "email",
+        "phone",
+        "search",
+        "close",
+        "open",
+        "solutions",
+        "agency",
+        "digital",
+        "marketing",
+        "media",
         "toronto",
-        "president",
-        "manager",
-        "director",
-        "owner",
-        "coordinator",
-        "operations",
+        "ottawa",
+        "canada",
+        "people",
+        "values",
+        "core",
+        "site",
         "support",
         "software",
         "service",
         "development",
         "applications",
-        "site",
-        "core",
-        "values",
-        "people",
+        "operations",
+        "coordinator",
+        "local",
+        "business",
+        "app",
+        "executive",
+        "producer",
+        "video",
+        "creative",
+        "production",
+        "design",
+        "designs",
+        "web",
+        "senior",
+        "junior",
+        "assistant",
+        "specialist",
+        "consultant",
+        "strategist",
+        "developer",
+        "engineer",
+        "designer",
     }
 )
+
+COMMON_SINGLE_NOUNS = frozenset(
+    {
+        "president",
+        "manager",
+        "director",
+        "owner",
+        "founder",
+        "partner",
+        "lead",
+        "head",
+        "chief",
+        "executive",
+        "officer",
+        "project",
+        "follow",
+        "linkedin",
+    }
+)
+
+TEAM_CONTAINER_HINTS = (
+    "team",
+    "staff",
+    "leadership",
+    "people",
+    "founder",
+    "bio",
+    "member",
+    "executive",
+    "management",
+)
+
+NAME_CLASS_HINTS = ("name", "person", "member", "author", "profile")
+TITLE_CLASS_HINTS = ("title", "role", "position", "job", "designation")
 
 EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
 PHONE_RE = re.compile(
     r"(?:\+?\d{1,3}[\s.-]?)?(?:\(?\d{2,4}\)?[\s.-]?)?\d{3}[\s.-]?\d{4}(?:[\s.-]?\d{1,6})?"
 )
-NAME_RE = re.compile(r"^[A-Z][a-z]+(?:[-'][A-Z][a-z]+)?(?:\s+[A-Z][a-z]+(?:[-'][A-Z][a-z]+)?){0,3}$")
+# 2–4 capitalized name parts (Jane Smith, Mary-Jane O'Brien)
+HUMAN_NAME_RE = re.compile(
+    r"^[A-Z][a-z]+(?:[-'][A-Z][a-z]+)?(?:\s+[A-Z][a-z]+(?:[-'][A-Z][a-z]+)?){1,3}$"
+)
 ROLE_PATTERN = re.compile(
     r"\b(" + "|".join(re.escape(k) for k in ROLE_KEYWORDS) + r")[^.\n]{0,80}",
     re.IGNORECASE,
@@ -78,7 +173,9 @@ SOCIAL_DOMAINS = {
     "facebook": ("facebook.com", "fb.com"),
 }
 
-LINKEDIN_PROFILE_RE = re.compile(r"https?://(?:[\w.-]+\.)?linkedin\.com/(?:in|company)/[\w\-_%./]+", re.I)
+LINKEDIN_PERSON_RE = re.compile(r"https?://(?:[\w.-]+\.)?linkedin\.com/in/[\w\-_%./]+", re.I)
+LINKEDIN_COMPANY_RE = re.compile(r"https?://(?:[\w.-]+\.)?linkedin\.com/company/[\w\-_%./]+", re.I)
+LINKEDIN_PROFILE_RE = LINKEDIN_PERSON_RE  # legacy alias
 
 HTTP_HEADERS = {
     "User-Agent": (
@@ -98,6 +195,7 @@ class ExecutiveContact:
     linkedin_url: str | None = None
     consent_status: str = "unknown"
     source_page: str | None = None
+    extraction_confidence: str = "low"
 
 
 @dataclass
@@ -113,8 +211,16 @@ class WebsiteIntelResult:
     error: str | None = None
 
 
+def _is_linkedin_person(url: str) -> bool:
+    return bool(LINKEDIN_PERSON_RE.match(url.strip()))
+
+
+def _is_linkedin_company(url: str) -> bool:
+    return bool(LINKEDIN_COMPANY_RE.match(url.strip()))
+
+
 def _is_linkedin_profile(url: str) -> bool:
-    return bool(LINKEDIN_PROFILE_RE.match(url.strip()))
+    return _is_linkedin_person(url) or _is_linkedin_company(url)
 
 
 def _classify_social_url(url: str) -> str | None:
@@ -138,16 +244,27 @@ def _extract_social_links(soup: BeautifulSoup) -> dict[str, str]:
     return found
 
 
-def _linkedin_from_element(element: Any) -> str | None:
+def _linkedin_from_element(element: Any, *, person_only: bool = False) -> str | None:
+    def _pick(href: str) -> str | None:
+        if not href:
+            return None
+        if person_only and not _is_linkedin_person(href):
+            return None
+        if not person_only and not _is_linkedin_profile(href):
+            return None
+        return href.split("?", 1)[0].rstrip("/")
+
     if element.name == "a":
-        href = element.get("href", "")
-        if href and _is_linkedin_profile(href):
-            return href.split("?", 1)[0].rstrip("/")
+        picked = _pick(element.get("href", ""))
+        if picked:
+            return picked
+    for anchor in element.find_all("a", href=True):
+        picked = _pick(anchor["href"])
+        if picked:
+            return picked
     parent_link = element.find_parent("a", href=True)
     if parent_link:
-        href = parent_link.get("href", "")
-        if href and _is_linkedin_profile(href):
-            return href.split("?", 1)[0].rstrip("/")
+        return _pick(parent_link.get("href", ""))
     return None
 
 
@@ -212,20 +329,25 @@ def _extract_phones(text: str, soup: BeautifulSoup | None = None) -> set[str]:
 
 
 def _looks_like_name(value: str) -> bool:
-    value = value.strip()
-    if not value or len(value) > 50:
+    """Reject nav/UI text; require a plausible human name (2+ capitalized words)."""
+    value = " ".join(value.split())
+    if not value or len(value) > 60:
         return False
     if any(ch.isdigit() for ch in value):
         return False
     lower = value.lower()
-    if lower in INVALID_NAME_TOKENS:
+    if lower in NAME_DENYLIST:
         return False
-    words = lower.split()
-    if any(word in INVALID_NAME_TOKENS for word in words):
+    words = value.split()
+    if len(words) < 2:
         return False
-    if any(re.search(rf"\b{re.escape(keyword)}\b", value, re.I) for keyword in ROLE_KEYWORDS):
+    if any(word.lower() in NAME_DENYLIST for word in words):
         return False
-    return bool(NAME_RE.match(value))
+    if any(word.lower() in COMMON_SINGLE_NOUNS for word in words):
+        return False
+    if not HUMAN_NAME_RE.match(value):
+        return False
+    return True
 
 
 def _extract_role_title(text: str) -> str | None:
@@ -239,6 +361,164 @@ def _extract_role_title(text: str) -> str | None:
         if len(snippet) <= 60:
             return snippet
     return None
+
+
+def _element_hints(element: Any) -> str:
+    parts: list[str] = []
+    for attr in ("class", "id"):
+        raw = element.get(attr)
+        if isinstance(raw, list):
+            parts.extend(str(x).lower() for x in raw)
+        elif raw:
+            parts.append(str(raw).lower())
+    return " ".join(parts)
+
+
+def _is_team_container(element: Any) -> bool:
+    hints = _element_hints(element)
+    return any(token in hints for token in TEAM_CONTAINER_HINTS)
+
+
+def _find_team_sections(soup: BeautifulSoup) -> list[Any]:
+    sections: list[Any] = []
+    seen: set[int] = set()
+    for element in soup.find_all(["section", "div", "ul", "article"]):
+        if id(element) in seen:
+            continue
+        if _is_team_container(element):
+            seen.add(id(element))
+            sections.append(element)
+    return sections
+
+
+def _split_name_title(text: str) -> tuple[str | None, str | None]:
+    """Parse 'Jane Smith, CEO' or 'Jane Smith | CEO' in one line."""
+    cleaned = " ".join(text.split())
+    if not cleaned:
+        return None, None
+    for sep in (",", "|", " – ", " — ", " - "):
+        if sep in cleaned:
+            left, right = cleaned.split(sep, 1)
+            name = left.strip()
+            title = _extract_role_title(right.strip())
+            if _looks_like_name(name) and title:
+                return name, title
+    name = _name_from_text(cleaned)
+    if name:
+        remainder = cleaned.replace(name, "", 1).strip(" ,-|")
+        title = _extract_role_title(remainder) if remainder else None
+        if title:
+            return name, title
+    return None, None
+
+
+def _find_name_element(container: Any) -> Any | None:
+    for tag in container.find_all(["h1", "h2", "h3", "h4", "h5", "h6", "strong", "span", "p"]):
+        hints = _element_hints(tag)
+        text = tag.get_text(" ", strip=True)
+        if any(h in hints for h in NAME_CLASS_HINTS):
+            if _looks_like_name(text):
+                return tag
+            name, title = _split_name_title(text)
+            if name and title:
+                return tag
+        if tag.name in {"h2", "h3", "h4", "h5", "strong"}:
+            if _looks_like_name(text):
+                return tag
+            name, title = _split_name_title(text)
+            if name and title:
+                return tag
+    return None
+
+
+def _find_title_element(container: Any, name: str) -> str | None:
+    for tag in container.find_all(["p", "span", "div", "h5", "h6", "em", "small"]):
+        hints = _element_hints(tag)
+        if any(h in hints for h in TITLE_CLASS_HINTS):
+            title = _extract_role_title(tag.get_text(" ", strip=True))
+            if title:
+                return title
+    for tag in container.find_all(["p", "span", "em", "small"]):
+        text = tag.get_text(" ", strip=True)
+        if name in text:
+            continue
+        title = _extract_role_title(text)
+        if title and len(text) <= 80:
+            return title
+    blob = container.get_text(" ", strip=True).replace(name, "", 1)
+    return _extract_role_title(blob)
+
+
+def _contacts_in_container(container: Any) -> tuple[str | None, str | None, str | None]:
+    email = phone = linkedin = None
+    for anchor in container.find_all("a", href=True):
+        href = anchor["href"].strip()
+        if href.startswith("mailto:") and not email:
+            cleaned = _clean_email(href.split("mailto:", 1)[-1].split("?", 1)[0])
+            if cleaned:
+                email = cleaned
+        elif href.startswith("tel:") and not phone:
+            cleaned = _clean_phone(href.split("tel:", 1)[-1])
+            if cleaned:
+                phone = cleaned
+        elif _is_linkedin_person(href) and not linkedin:
+            linkedin = href.split("?", 1)[0].rstrip("/")
+    if not email:
+        for match in EMAIL_RE.findall(container.get_text(" ", strip=True)):
+            cleaned = _clean_email(match)
+            if cleaned:
+                email = cleaned
+                break
+    if not phone:
+        for match in PHONE_RE.findall(container.get_text(" ", strip=True)):
+            cleaned = _clean_phone(match)
+            if cleaned:
+                phone = cleaned
+                break
+    return email, phone, linkedin
+
+
+def _confidence(structural: bool, email: str | None, phone: str | None, linkedin: str | None) -> str:
+    if structural and (email or phone or linkedin):
+        return "high"
+    if structural:
+        return "medium"
+    return "low"
+
+
+def _extract_structural_pairs(container: Any, page_url: str) -> list[ExecutiveContact]:
+    results: list[ExecutiveContact] = []
+    card_tags = container.find_all(["div", "li", "article"], recursive=True)
+    candidates = [c for c in card_tags if _is_team_container(c)] or [container]
+
+    for card in candidates:
+        name_el = _find_name_element(card)
+        if not name_el:
+            continue
+        raw_name_text = name_el.get_text(" ", strip=True)
+        name, combined_title = _split_name_title(raw_name_text)
+        if not name:
+            name = raw_name_text
+        if not _looks_like_name(name):
+            continue
+        title = combined_title or _find_title_element(card, name)
+        if not title:
+            continue
+        email, phone, linkedin = _contacts_in_container(card)
+        if not linkedin:
+            linkedin = _linkedin_from_element(name_el, person_only=True)
+        results.append(
+            ExecutiveContact(
+                name=name,
+                title=title,
+                email=email,
+                phone=phone,
+                linkedin_url=linkedin,
+                source_page=page_url,
+                extraction_confidence=_confidence(True, email, phone, linkedin),
+            )
+        )
+    return results
 
 
 def _name_from_text(text: str) -> str | None:
@@ -255,8 +535,46 @@ def _name_from_text(text: str) -> str | None:
     return None
 
 
+def _card_is_reasonable(card: Any) -> bool:
+    """Skip page wrappers; keep card-sized blocks likely to hold one person."""
+    nested = card.find_all(["div", "li", "article"])
+    if len(nested) > 25:
+        return False
+    text = card.get_text(" ", strip=True)
+    return 10 <= len(text) <= 600
+
+
+def _extract_inline_name_title(soup: BeautifulSoup, page_url: str) -> list[ExecutiveContact]:
+    """Handle 'Jane Smith, CEO' in a single heading/strong element."""
+    results: list[ExecutiveContact] = []
+    for tag in soup.find_all(["strong", "h2", "h3", "h4", "h5", "h6"]):
+        name, title = _split_name_title(tag.get_text(" ", strip=True))
+        if not name or not title:
+            continue
+        parent = tag.find_parent(["li", "div", "article", "section"]) or tag
+        email, phone, linkedin = _contacts_in_container(parent)
+        if not linkedin:
+            linkedin = _linkedin_from_element(tag, person_only=True)
+        results.append(
+            ExecutiveContact(
+                name=name,
+                title=title,
+                email=email,
+                phone=phone,
+                linkedin_url=linkedin,
+                source_page=page_url,
+                extraction_confidence=_confidence(True, email, phone, linkedin),
+            )
+        )
+    return results
+
+
 def _extract_team_cards(soup: BeautifulSoup, page_url: str) -> list[ExecutiveContact]:
     executives: list[ExecutiveContact] = []
+    executives.extend(_extract_inline_name_title(soup, page_url))
+    for section in _find_team_sections(soup):
+        executives.extend(_extract_structural_pairs(section, page_url))
+
     card_selectors = (
         "[class*='team-member']",
         "[class*='team_member']",
@@ -264,41 +582,23 @@ def _extract_team_cards(soup: BeautifulSoup, page_url: str) -> list[ExecutiveCon
         "[class*='staff-member']",
         "[class*='leadership']",
         "[class*='person-card']",
+        "[class*='bio']",
     )
-    cards: list[Any] = []
     for selector in card_selectors:
-        cards.extend(soup.select(selector))
+        for card in soup.select(selector):
+            executives.extend(_extract_structural_pairs(card, page_url))
 
-    for card in cards:
-        heading = card.find(["h2", "h3", "h4", "h5", "strong"])
-        if not heading:
-            continue
-        name = heading.get_text(" ", strip=True)
-        if not _looks_like_name(name):
-            continue
-        title_text = card.get_text(" ", strip=True)
-        title = _extract_role_title(title_text.replace(name, "", 1))
-        if not title:
-            continue
-        linkedin = _linkedin_from_element(heading)
-        executives.append(
-            ExecutiveContact(
-                name=name,
-                title=title,
-                linkedin_url=linkedin,
-                source_page=page_url,
-            )
-        )
+    on_team_path = bool(TEAM_PATH_RE.search(urlparse(page_url).path))
+    if on_team_path:
+        for card in soup.find_all(["div", "li", "article"]):
+            if not _card_is_reasonable(card):
+                continue
+            executives.extend(_extract_structural_pairs(card, page_url))
     return executives
 
 
-def _extract_executives(soup: BeautifulSoup, page_url: str) -> list[ExecutiveContact]:
-    if not TEAM_PATH_RE.search(urlparse(page_url).path):
-        return []
-
-    executives = _extract_team_cards(soup, page_url)
-    seen = {(e.name.lower(), (e.title or "").lower()) for e in executives}
-
+def _extract_proximity_fallback(soup: BeautifulSoup, page_url: str) -> list[ExecutiveContact]:
+    executives: list[ExecutiveContact] = []
     for tag in soup.find_all(["h2", "h3", "h4", "p", "li"]):
         text = " ".join(tag.get_text(" ", strip=True).split())
         if not text or not ROLE_PATTERN.search(text):
@@ -307,43 +607,72 @@ def _extract_executives(soup: BeautifulSoup, page_url: str) -> list[ExecutiveCon
         if not title:
             continue
         name = _name_from_text(text.replace(title, "", 1))
+        structural = False
+        if not name:
+            name = _name_from_text(text)
+            if name and title and name not in title:
+                structural = True
         if not name:
             continue
-        key = (name.lower(), title.lower())
-        if key in seen:
-            continue
-        seen.add(key)
-        linkedin = _linkedin_from_element(tag)
+        parent = tag.find_parent(["li", "div", "article"]) or tag
+        if not structural:
+            name_el = _find_name_element(parent)
+            if name_el and name_el.get_text(" ", strip=True) == name and _find_title_element(parent, name):
+                structural = True
+        email, phone, linkedin = _contacts_in_container(parent)
+        if not linkedin:
+            linkedin = _linkedin_from_element(tag, person_only=True)
         executives.append(
             ExecutiveContact(
                 name=name,
                 title=title,
+                email=email,
+                phone=phone,
                 linkedin_url=linkedin,
                 source_page=page_url,
+                extraction_confidence=_confidence(structural, email, phone, linkedin),
             )
         )
 
     for anchor in soup.find_all("a", href=True):
         href = anchor.get("href", "")
-        if not _is_linkedin_profile(href):
+        if not _is_linkedin_person(href):
             continue
         name = anchor.get_text(" ", strip=True)
         if not _looks_like_name(name):
             continue
-        parent_text = anchor.find_parent(["li", "div", "article"])
-        title = _extract_role_title(parent_text.get_text(" ", strip=True) if parent_text else name)
-        key = (name.lower(), (title or "").lower())
-        if key in seen:
-            continue
-        seen.add(key)
+        parent = anchor.find_parent(["li", "div", "article"])
+        title = _extract_role_title(parent.get_text(" ", strip=True) if parent else name)
+        email, phone, linkedin = _contacts_in_container(parent) if parent else (None, None, None)
+        linkedin = linkedin or href.split("?", 1)[0].rstrip("/")
         executives.append(
             ExecutiveContact(
                 name=name,
                 title=title,
-                linkedin_url=href.split("?", 1)[0].rstrip("/"),
+                email=email,
+                phone=phone,
+                linkedin_url=linkedin,
                 source_page=page_url,
+                extraction_confidence=_confidence(bool(parent), email, phone, linkedin),
             )
         )
+    return executives
+
+
+def _extract_executives(soup: BeautifulSoup, page_url: str) -> list[ExecutiveContact]:
+    on_team_path = bool(TEAM_PATH_RE.search(urlparse(page_url).path))
+    if not on_team_path and not _find_team_sections(soup):
+        return []
+
+    executives = _extract_team_cards(soup, page_url)
+    seen = {(e.name.lower(), (e.title or "").lower()) for e in executives}
+
+    for candidate in _extract_proximity_fallback(soup, page_url):
+        key = (candidate.name.lower(), (candidate.title or "").lower())
+        if key in seen:
+            continue
+        seen.add(key)
+        executives.append(candidate)
 
     return executives[:20]
 
