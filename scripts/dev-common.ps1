@@ -77,7 +77,7 @@ function Ensure-OllamaRunning {
 
     $ollama = Get-Command ollama -ErrorAction SilentlyContinue
     if (-not $ollama) {
-        Write-Warning "Ollama not found on PATH — install from https://ollama.com or start manually."
+        Write-Warning "Ollama not found on PATH - install from https://ollama.com or start manually."
         return
     }
 
@@ -97,5 +97,5 @@ function Ensure-OllamaRunning {
         }
     }
 
-    Write-Warning "Ollama did not respond at $BaseUrl within 15s — enrichment may fall back to heuristics."
+    Write-Warning "Ollama did not respond at $BaseUrl within 15s - enrichment may fall back to heuristics."
 }
