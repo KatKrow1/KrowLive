@@ -81,7 +81,6 @@ export function CompaniesTable({
           <thead className="border-b border-border bg-muted/30">
             <tr>
               {th("name", "Company")}
-              {th("category", "Industry")}
               <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 Location
               </th>
@@ -107,7 +106,6 @@ export function CompaniesTable({
                   className="cursor-pointer border-b border-border/60 transition hover:bg-muted/20"
                 >
                   <td className="px-4 py-3 font-medium">{company.name}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{company.category ?? "—"}</td>
                   <td className="px-4 py-3 text-muted-foreground">
                     {[company.city, company.state].filter(Boolean).join(", ") || "—"}
                   </td>

@@ -1,5 +1,9 @@
 -- KrowLive database schema
 -- Run this entire script in Supabase SQL Editor (Dashboard → SQL → New query)
+--
+-- ID types in production:
+--   countries, states → SERIAL (integer)
+--   companies, executives, jobs → UUID
 
 -- ---------------------------------------------------------------------------
 -- Extensions
@@ -34,7 +38,35 @@ EXCEPTION
 END $$;
 
 -- ---------------------------------------------------------------------------
--- Companies
+-- Hierarchy: countries → states (integer IDs)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS countries (
+  id          SERIAL PRIMARY KEY,
+  code        TEXT NOT NULL UNIQUE,
+  name        TEXT NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS states (
+  id          SERIAL PRIMARY KEY,
+  country_id  INTEGER NOT NULL REFERENCES countries (id) ON DELETE CASCADE,
+  name        TEXT NOT NULL,
+  slug        TEXT NOT NULL,
+  code        TEXT,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (country_id, slug)
+);
+
+CREATE INDEX IF NOT EXISTS idx_states_country_id ON states (country_id);
+
+INSERT INTO countries (code, name)
+VALUES ('CA', 'Canada'), ('AU', 'Australia')
+ON CONFLICT (code) DO NOTHING;
+
+-- ---------------------------------------------------------------------------
+-- Companies (UUID primary key; integer hierarchy FKs)
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS companies (
   id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -43,9 +75,10 @@ CREATE TABLE IF NOT EXISTS companies (
   city                TEXT,
   state               TEXT,
   country             country_code NOT NULL,
+  country_id          INTEGER REFERENCES countries (id),
+  state_id            INTEGER REFERENCES states (id),
   phone               TEXT,
   website             TEXT NOT NULL UNIQUE,
-  category            TEXT,
   google_rating       NUMERIC(2, 1),
   google_review_count INTEGER,
   lead_score          INTEGER CHECK (lead_score >= 0 AND lead_score <= 100),
@@ -58,15 +91,16 @@ CREATE TABLE IF NOT EXISTS companies (
 );
 
 CREATE INDEX IF NOT EXISTS idx_companies_country ON companies (country);
+CREATE INDEX IF NOT EXISTS idx_companies_country_id ON companies (country_id);
+CREATE INDEX IF NOT EXISTS idx_companies_state_id ON companies (state_id);
 CREATE INDEX IF NOT EXISTS idx_companies_state ON companies (state);
 CREATE INDEX IF NOT EXISTS idx_companies_city ON companies (city);
-CREATE INDEX IF NOT EXISTS idx_companies_category ON companies (category);
 CREATE INDEX IF NOT EXISTS idx_companies_lead_score ON companies (lead_score DESC);
 CREATE INDEX IF NOT EXISTS idx_companies_source ON companies (source);
 CREATE INDEX IF NOT EXISTS idx_companies_social_links ON companies USING gin (social_links);
 
 -- ---------------------------------------------------------------------------
--- Executives (consent_status required for CASL / Spam Act compliance)
+-- Executives
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS executives (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -86,7 +120,7 @@ CREATE INDEX IF NOT EXISTS idx_executives_company_id ON executives (company_id);
 CREATE INDEX IF NOT EXISTS idx_executives_consent_status ON executives (consent_status);
 
 -- ---------------------------------------------------------------------------
--- Jobs (single-row progress tracker for discovery / upload tasks)
+-- Jobs
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS jobs (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -102,7 +136,6 @@ CREATE TABLE IF NOT EXISTS jobs (
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Seed a single idle job row the API can update (only if table is empty)
 INSERT INTO jobs (job_type, status, message)
 SELECT 'discovery', 'idle', 'Ready'
 WHERE NOT EXISTS (SELECT 1 FROM jobs LIMIT 1);
@@ -133,9 +166,19 @@ CREATE TRIGGER trg_jobs_updated_at
   BEFORE UPDATE ON jobs
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
+DROP TRIGGER IF EXISTS trg_countries_updated_at ON countries;
+CREATE TRIGGER trg_countries_updated_at
+  BEFORE UPDATE ON countries FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+DROP TRIGGER IF EXISTS trg_states_updated_at ON states;
+CREATE TRIGGER trg_states_updated_at
+  BEFORE UPDATE ON states FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
 -- ---------------------------------------------------------------------------
--- Row Level Security (service role bypasses; enable for future auth)
+-- Row Level Security
 -- ---------------------------------------------------------------------------
+ALTER TABLE countries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE states ENABLE ROW LEVEL SECURITY;
 ALTER TABLE companies ENABLE ROW LEVEL SECURITY;
 ALTER TABLE executives ENABLE ROW LEVEL SECURITY;
 ALTER TABLE jobs ENABLE ROW LEVEL SECURITY;
@@ -154,3 +197,12 @@ CREATE POLICY "Service role full access on jobs"
   ON jobs FOR ALL
   USING (true)
   WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Service role full access on countries" ON countries;
+DROP POLICY IF EXISTS "Service role full access on states" ON states;
+
+CREATE POLICY "Service role full access on countries"
+  ON countries FOR ALL USING (true) WITH CHECK (true);
+
+CREATE POLICY "Service role full access on states"
+  ON states FOR ALL USING (true) WITH CHECK (true);

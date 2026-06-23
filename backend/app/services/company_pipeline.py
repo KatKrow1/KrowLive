@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 from postgrest.exceptions import APIError
 from supabase import Client
 
+from app.repositories.hierarchy import HierarchyRepository
 from app.connectors.website_intelligence import WebsiteIntelResult, scrape_website_sync
 from app.enrichment import enrich_company
 from app.supabase_retry import supabase_write_retry
@@ -51,7 +52,7 @@ def _build_signals(company: dict[str, Any], intel: WebsiteIntelResult) -> dict[s
 
 def _upsert_company(db: Client, payload: dict[str, Any]) -> dict[str, Any] | None:
     """Upsert with graceful fallback if optional columns are not migrated yet."""
-    optional_columns = ("tech_stack_signals", "social_links")
+    optional_columns = ("tech_stack_signals", "social_links", "country_id", "state_id")
     attempt = dict(payload)
     for _ in range(len(optional_columns) + 1):
         try:
@@ -103,13 +104,30 @@ def process_company_record(
         if not company.get("phone") and intel.phones:
             company["phone"] = intel.phones[0]
 
+        country_code = str(company.get("country", "CA"))
+        state_name = company.get("state") or "Unknown"
+
         payload = {
-            **{k: v for k, v in company.items() if k not in {"id", "executives"}},
+            **{
+                k: v
+                for k, v in company.items()
+                if k not in {"id", "executives", "category", "category_id"}
+            },
             "summary": enriched["summary"],
             "lead_score": enriched["lead_score"],
             "tech_stack_signals": enriched.get("tech_stack_signals") or [],
             "social_links": intel.social_links or {},
         }
+
+        repo = HierarchyRepository(db)
+        country_row, state_row = repo.resolve_hierarchy(
+            country_code=country_code,
+            state_name=state_name,
+        )
+        payload["country"] = country_row["code"]
+        payload["state"] = state_row["name"]
+        payload["country_id"] = country_row["id"]
+        payload["state_id"] = state_row["id"]
 
         row = _upsert_company(db, payload)
         if not row:

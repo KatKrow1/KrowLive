@@ -1,11 +1,23 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Loader2, MapPin, Radar, Sparkles } from "lucide-react";
+import { Check, ExternalLink, Loader2, MapPin, Radar, Sparkles } from "lucide-react";
 import { api, JobStatus } from "@/lib/api";
 import { useAppContext } from "@/lib/context";
-import { AU_STATES, CA_PROVINCES, citiesForStates, defaultCitiesForCountry, defaultStatesForCountry, INDUSTRIES } from "@/lib/constants";
+import {
+  AU_STATES,
+  CA_PROVINCES,
+  citiesForStates,
+  companiesCountryPath,
+  companiesStatePath,
+  defaultCitiesForCountry,
+  defaultStatesForCountry,
+  discoveryStateForCompaniesPath,
+  INDUSTRIES,
+  toSlug,
+} from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 const STEPS = ["Industry", "Location", "Review & Run"];
@@ -62,6 +74,14 @@ export default function DiscoveryPage() {
   }, []);
 
   const cities = selectedCities.filter((c) => availableCities.includes(c));
+
+  const resultsHref =
+    selectedStates.length === 1
+      ? companiesStatePath(
+          country,
+          toSlug(discoveryStateForCompaniesPath(country, selectedStates[0]))
+        )
+      : companiesCountryPath(country);
 
   const toggleState = (state: string) => {
     setSelectedStates((prev) =>
@@ -253,6 +273,23 @@ export default function DiscoveryPage() {
                   <p className="mt-2 text-xs text-muted-foreground">
                     {jobStatus.processed_items}/{jobStatus.total_items} processed · {jobStatus.progress}%
                   </p>
+                </div>
+              )}
+
+              {jobStatus?.status === "completed" && !running && (
+                <div className="rounded-lg border border-success/30 bg-success/5 p-4">
+                  <p className="text-sm font-medium text-emerald-300">Discovery complete</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {jobStatus.processed_items} companies processed
+                    {jobStatus.error ? ` · ${jobStatus.error}` : ""}
+                  </p>
+                  <Link
+                    href={resultsHref}
+                    className="mt-3 inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white"
+                  >
+                    View results
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </Link>
                 </div>
               )}
 

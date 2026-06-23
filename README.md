@@ -68,15 +68,26 @@ Admin CSV upload (internal): http://localhost:3000/admin/upload
 | `SUPABASE_URL` | Yes | Supabase project URL |
 | `SUPABASE_KEY` | Yes | Supabase API key |
 | `GOOGLE_PLACES_API_KEY` | Yes | Google Places API key |
-| `ENRICHMENT_PROVIDER` | No | `none` (default, rule-based) or `custom` |
+| `ENRICHMENT_PROVIDER` | No | `none` (default, rule-based), `ollama` (local LLM), or `custom` |
 | `ENRICHMENT_API_KEY` | No | Bearer token for custom enrichment API |
 | `ENRICHMENT_API_URL` | No | POST endpoint for custom enrichment |
+| `OLLAMA_BASE_URL` | No | Ollama server URL (default `http://localhost:11434`) |
+| `OLLAMA_MODEL` | No | Live discovery model (default `llama3.1`) |
+| `OLLAMA_TIMEOUT_SECONDS` | No | Per-call timeout for live pipeline (default `120`) |
+| `OLLAMA_MAX_EXECUTIVE_CALLS` | No | Max Ollama exec refinements per company scrape (default `6`) |
+| `OLLAMA_REFINEMENT_MODEL` | No | Model for `refine_existing_companies.py` only (default `qwen3`) |
+| `OLLAMA_REFINEMENT_TIMEOUT_SECONDS` | No | Timeout for refinement script (default `420`) |
 | `CORS_ORIGINS` | No | Allowed frontend origins (comma-separated) |
 | `DEBUG` | No | Include tracebacks in JSON error responses |
 
 ### Enrichment providers
 
-- **`none` (default):** Rule-based lead scoring from data completeness (email, phone, named contact, active site, Google rating, social links) plus a templated summary from scraped website text. No external AI call.
+- **`none` (default):** Rule-based lead scoring from data completeness (email, phone, named contact, active site, Google rating, social links) plus a templated summary from scraped website text. No external AI call — zero latency, safe fallback if local LLM is too slow.
+- **`ollama`:** Uses a local [Ollama](https://ollama.com) server for executive extraction and summary refinement during discovery.
+  - **Live discovery** uses `OLLAMA_MODEL` (default **`llama3.1`**) — faster (~70s/call on CPU in testing).
+  - **Occasional deep-clean** of existing rows: run `python scripts/refine_existing_companies.py` — uses `OLLAMA_REFINEMENT_MODEL` (default **`qwen3`**, slower but more thorough). Not used during `/discovery/run`.
+  - On timeout or error, falls back to rule-based/heuristic results automatically.
+  - `start-backend.ps1` checks Ollama is running and starts `ollama serve` if needed.
 - **`custom`:** POSTs scraped signals to `ENRICHMENT_API_URL` with `Authorization: Bearer {ENRICHMENT_API_KEY}`. Expects JSON `{"summary": "...", "lead_score": 0-100}`. Falls back to rule-based on any failure.
 
 ### Frontend (`frontend/.env.local`)

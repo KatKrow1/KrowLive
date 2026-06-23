@@ -67,3 +67,50 @@ export const AU_CITIES: Record<string, string[]> = {
 export function currencyForCountry(country: "CA" | "AU") {
   return country === "CA" ? "CAD" : "AUD";
 }
+
+export function countryLabel(country: "CA" | "AU") {
+  return country === "CA" ? "Canada" : "Australia";
+}
+
+export function isCountryCode(value: string): value is "CA" | "AU" {
+  return value === "CA" || value === "AU";
+}
+
+/** URL-safe state segment for /companies/[country]/[state] routes. */
+export function stateToPath(state: string) {
+  return encodeURIComponent(state);
+}
+
+export function stateFromPath(segment: string) {
+  return decodeURIComponent(segment);
+}
+
+export function companiesCountryPath(country: "CA" | "AU") {
+  return `/companies/${country}`;
+}
+
+export function companiesStatePath(country: "CA" | "AU", stateSlug: string) {
+  return `/companies/${country}/${stateSlug}`;
+}
+
+export function companyDetailPath(id: number | string) {
+  return `/company/${id}`;
+}
+
+export function toSlug(value: string) {
+  return (
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "") || "unknown"
+  );
+}
+
+/** Map discovery UI state codes to likely DB values (e.g. NSW → New South Wales). */
+export function discoveryStateForCompaniesPath(country: "CA" | "AU", state: string) {
+  if (country === "AU" && state in AU_STATE_LABELS) {
+    return AU_STATE_LABELS[state];
+  }
+  return state;
+}

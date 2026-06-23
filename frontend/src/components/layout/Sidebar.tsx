@@ -25,7 +25,10 @@ export function Sidebar() {
       </div>
       <nav className="flex flex-1 flex-col gap-1">
         {NAV.map(({ href, label, icon: Icon }) => {
-          const active = pathname === href || (href !== "/" && pathname.startsWith(href));
+          const active =
+            pathname === href ||
+            (href !== "/" && pathname.startsWith(href)) ||
+            (href === "/companies" && pathname.startsWith("/company"));
           return (
             <Link
               key={href}

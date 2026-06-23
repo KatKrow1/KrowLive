@@ -9,6 +9,7 @@ export type SocialLinks = {
 
 export type Executive = {
   id?: string;
+  company_id?: string | null;
   name: string;
   title?: string | null;
   email?: string | null;
@@ -18,6 +19,7 @@ export type Executive = {
   extraction_confidence?: "high" | "medium" | "low";
 };
 
+/** Full company — id is UUID string; country_id/state_id are integers. */
 export type Company = {
   id?: string;
   name: string;
@@ -25,9 +27,11 @@ export type Company = {
   city?: string | null;
   state?: string | null;
   country: "CA" | "AU";
+  country_id?: number | null;
+  state_id?: number | null;
+  state_slug?: string | null;
   phone?: string | null;
   website: string;
-  category?: string | null;
   google_rating?: number | null;
   google_review_count?: number | null;
   lead_score?: number | null;
@@ -38,11 +42,14 @@ export type Company = {
   executives?: Executive[];
 };
 
-export type CompanyListResponse = {
-  items: Company[];
-  total: number;
-  page: number;
-  page_size: number;
+export type CompanySummary = {
+  id: string;
+  name: string;
+};
+
+export type CompanyDetailResponse = {
+  company: Company;
+  executives: Executive[];
 };
 
 export type JobStatus = {
@@ -54,15 +61,27 @@ export type JobStatus = {
   error?: string | null;
 };
 
+export type StateChartPoint = { state: string; count: number };
+
 export type Stats = {
   total_companies: number;
   avg_lead_score: number;
   canada_count: number;
   australia_count: number;
-  top_industry: string;
+  chart_by_state: StateChartPoint[];
 };
 
-export type StateChartPoint = { state: string; count: number };
+export type CountryNode = {
+  id: number;
+  code: "CA" | "AU";
+  name: string;
+};
+
+export type StateNode = {
+  id: number;
+  name: string;
+  slug: string;
+};
 
 export type CsvUploadResult = {
   rows_processed: number;
@@ -105,18 +124,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  getCountries: () => request<CountryNode[]>("/countries"),
+  getStates: (countryId: number | string) =>
+    request<StateNode[]>(`/countries/${countryId}/states`),
+  getCompanies: (stateId: number) => request<CompanySummary[]>(`/states/${stateId}/companies`),
+  getCompany: (id: string) => request<CompanyDetailResponse>(`/companies/${id}`),
   getStats: (country?: "CA" | "AU") =>
-    request<Stats>(`/companies/stats${country ? `?country=${country}` : ""}`),
-  getChartByState: (country?: "CA" | "AU") =>
-    request<StateChartPoint[]>(`/companies/chart/by-state${country ? `?country=${country}` : ""}`),
-  getCompanies: (params: Record<string, string | number | undefined>) => {
-    const qs = new URLSearchParams();
-    Object.entries(params).forEach(([k, v]) => {
-      if (v !== undefined && v !== "") qs.set(k, String(v));
-    });
-    return request<CompanyListResponse>(`/companies?${qs.toString()}`);
-  },
-  getCompany: (id: string) => request<Company>(`/companies/${id}`),
+    request<Stats>(`/stats${country ? `?country=${country}` : ""}`),
   getStatus: () => request<JobStatus>("/status"),
   runDiscovery: (body: object) =>
     request<JobStatus>("/discovery/run", {

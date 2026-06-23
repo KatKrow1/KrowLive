@@ -13,7 +13,7 @@ from postgrest.exceptions import APIError as PostgrestAPIError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.config import settings
-from app.routers import companies, discovery, status, upload
+from app.routers import companies, discovery, hierarchy, stats, status, upload
 
 logger = logging.getLogger("krowlive")
 logging.basicConfig(level=logging.INFO)
@@ -95,7 +95,9 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     )
 
 
+app.include_router(hierarchy.router)
 app.include_router(companies.router)
+app.include_router(stats.router)
 app.include_router(discovery.router)
 app.include_router(upload.router)
 app.include_router(status.router)
@@ -108,4 +110,13 @@ def root():
 
 @app.get("/health")
 def health():
-    return {"status": "healthy"}
+    from app.db import get_supabase
+
+    try:
+        db = get_supabase()
+        db.table("countries").select("id").limit(1).execute()
+        hierarchy_ready = True
+    except Exception:
+        hierarchy_ready = False
+
+    return {"status": "healthy", "hierarchy_ready": hierarchy_ready}

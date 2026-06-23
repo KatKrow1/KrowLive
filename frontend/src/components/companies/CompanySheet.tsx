@@ -80,51 +80,32 @@ type Props = {
   company: Company | null;
   loading?: boolean;
   onClose: () => void;
+  embedded?: boolean;
 };
 
-export function CompanySheet({ company, loading, onClose }: Props) {
-  if (!company) return null;
-
+function CompanyDetailBody({ company, loading }: { company: Company; loading?: boolean }) {
   const social = company.social_links ?? {};
   const executives = (company.executives ?? []).filter(isLikelyPerson);
   const hasSocial = Boolean(social.linkedin || social.twitter || social.instagram || social.facebook);
 
   return (
-    <AnimatePresence>
-      <>
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
-          onClick={onClose}
-        />
-        <motion.aside
-          initial={{ x: "100%" }}
-          animate={{ x: 0 }}
-          exit={{ x: "100%" }}
-          transition={{ type: "spring", damping: 28, stiffness: 320 }}
-          className="fixed inset-y-0 right-0 z-50 flex w-full max-w-lg flex-col border-l border-border/80 bg-card shadow-2xl"
-        >
-          <div className="flex items-start justify-between border-b border-border/60 p-6">
-            <div className="min-w-0 pr-4">
-              <h2 className="text-xl font-semibold leading-tight">{company.name}</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {[company.city, company.state, company.country].filter(Boolean).join(", ")}
-              </p>
-            </div>
-            <button type="button" onClick={onClose} className="shrink-0 rounded-lg p-2 hover:bg-muted">
-              <X className="h-5 w-5" />
-            </button>
-          </div>
+    <>
+      <div className="flex items-start justify-between border-b border-border/60 p-6">
+        <div className="min-w-0 pr-4">
+          <h2 className="text-xl font-semibold leading-tight">{company.name}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {[company.city, company.state, company.country].filter(Boolean).join(", ")}
+          </p>
+        </div>
+      </div>
 
-          <div className="flex-1 space-y-6 overflow-y-auto p-6">
-            {loading && (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Loading full company details…
-              </div>
-            )}
+      <div className="space-y-6 p-6">
+        {loading && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Loading full company details…
+          </div>
+        )}
 
             <section className="space-y-3 rounded-xl border border-border/60 bg-muted/10 p-4">
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Company details</p>
@@ -158,12 +139,6 @@ export function CompanySheet({ company, loading, onClose }: Props) {
                     </a>
                   </dd>
                 </div>
-                {company.category && (
-                  <div className="flex justify-between border-t border-border/40 pt-2">
-                    <dt className="text-muted-foreground">Industry</dt>
-                    <dd>{company.category}</dd>
-                  </div>
-                )}
                 {(company.google_rating != null || company.google_review_count != null) && (
                   <div className="flex justify-between border-t border-border/40 pt-2">
                     <dt className="text-muted-foreground">Google rating</dt>
@@ -342,6 +317,44 @@ export function CompanySheet({ company, loading, onClose }: Props) {
                 </div>
               )}
             </section>
+      </div>
+    </>
+  );
+}
+
+export function CompanySheet({ company, loading, onClose, embedded }: Props) {
+  if (!company) return null;
+
+  if (embedded) {
+    return <CompanyDetailBody company={company} loading={loading} />;
+  }
+
+  return (
+    <AnimatePresence>
+      <>
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
+          onClick={onClose}
+        />
+        <motion.aside
+          initial={{ x: "100%" }}
+          animate={{ x: 0 }}
+          exit={{ x: "100%" }}
+          transition={{ type: "spring", damping: 28, stiffness: 320 }}
+          className="fixed inset-y-0 right-0 z-50 flex w-full max-w-lg flex-col overflow-y-auto border-l border-border/80 bg-card shadow-2xl"
+        >
+          <div className="relative">
+            <button
+              type="button"
+              onClick={onClose}
+              className="absolute right-4 top-4 z-10 rounded-lg p-2 hover:bg-muted"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            <CompanyDetailBody company={company} loading={loading} />
           </div>
         </motion.aside>
       </>

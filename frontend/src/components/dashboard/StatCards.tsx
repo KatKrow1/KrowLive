@@ -23,7 +23,7 @@ type StatCardsProps = {
     avg_lead_score: number;
     canada_count: number;
     australia_count: number;
-    top_industry: string;
+    chart_by_state?: { state: string; count: number }[];
   } | null;
   loading: boolean;
   country: "CA" | "AU";
@@ -38,7 +38,11 @@ export function StatCards({ stats, loading, country }: StatCardsProps) {
       value: country === "CA" ? stats?.canada_count ?? 0 : stats?.australia_count ?? 0,
       decimals: 0,
     },
-    { label: "Top Industry", value: stats?.top_industry ?? "—", isText: true },
+    {
+      label: "Regions",
+      value: stats?.chart_by_state?.length ?? 0,
+      decimals: 0,
+    },
   ];
 
   return (
@@ -55,8 +59,6 @@ export function StatCards({ stats, loading, country }: StatCardsProps) {
           <p className="mt-2 text-2xl font-semibold">
             {loading ? (
               <span className="inline-block h-7 w-16 animate-pulse rounded bg-muted" />
-            ) : card.isText ? (
-              card.value
             ) : (
               <AnimatedNumber value={Number(card.value)} decimals={card.decimals} />
             )}

@@ -1,9 +1,14 @@
-"""Pydantic models for KrowLive API."""
+"""Pydantic models for KrowLive API.
+
+ID conventions (match production Supabase):
+- countries.id, states.id, country_id, state_id → integer
+- companies.id, executives.id, company_id → UUID string
+"""
 
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -33,16 +38,18 @@ class Executive(BaseModel):
     extraction_confidence: ExtractionConfidence = "low"
 
 
-class Company(BaseModel):
+class CompanyResponse(BaseModel):
     id: str | None = None
     name: str
     address: str | None = None
     city: str | None = None
     state: str | None = None
     country: CountryCode
+    country_id: int | None = None
+    state_id: int | None = None
+    state_slug: str | None = None
     phone: str | None = None
     website: str
-    category: str | None = None
     google_rating: float | None = None
     google_review_count: int | None = None
     lead_score: int | None = None
@@ -53,6 +60,36 @@ class Company(BaseModel):
     executives: list[Executive] = Field(default_factory=list)
     created_at: datetime | None = None
     updated_at: datetime | None = None
+
+
+Company = CompanyResponse
+
+
+class CountryResponse(BaseModel):
+    id: int
+    code: CountryCode
+    name: str
+
+
+class StateResponse(BaseModel):
+    id: int
+    name: str
+    slug: str
+
+
+class CompanySummaryResponse(BaseModel):
+    id: str
+    name: str
+
+
+CountryNode = CountryResponse
+StateNode = StateResponse
+CompanySummary = CompanySummaryResponse
+
+
+class CompanyDetailResponse(BaseModel):
+    company: CompanyResponse
+    executives: list[Executive]
 
 
 class DiscoveryRequest(BaseModel):
@@ -81,13 +118,6 @@ class JobStatusResponse(BaseModel):
     error: str | None = None
     started_at: datetime | None = None
     completed_at: datetime | None = None
-
-
-class CompanyListResponse(BaseModel):
-    items: list[Company]
-    total: int
-    page: int
-    page_size: int
 
 
 class EnrichmentResult(BaseModel):

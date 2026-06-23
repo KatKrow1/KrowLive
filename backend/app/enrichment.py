@@ -13,7 +13,7 @@ from app.config import settings
 
 logger = logging.getLogger("krowlive.enrichment")
 
-EnrichmentProvider = Literal["none", "custom"]
+EnrichmentProvider = Literal["none", "custom", "ollama"]
 CUSTOM_ENRICHMENT_TIMEOUT = 30.0
 
 TECH_SIGNAL_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
@@ -130,6 +130,25 @@ def custom_provider_enrichment(signals: dict[str, Any]) -> dict[str, Any]:
 def enrich_company(signals: dict[str, Any]) -> dict[str, Any]:
     """Return summary, lead_score, and tech_stack_signals."""
     provider = settings.enrichment_provider.lower().strip()
+    rules = rule_based_enrichment(signals)
+
+    if provider == "ollama":
+        try:
+            from app.services.ollama_client import ollama_summary_and_tech
+
+            page_texts = signals.get("page_texts") or []
+            ollama_result = ollama_summary_and_tech(page_texts)
+            if ollama_result:
+                tech = ollama_result.get("tech_stack_signals") or []
+                if not tech:
+                    tech = rules["tech_stack_signals"]
+                return {
+                    "summary": ollama_result["summary"],
+                    "lead_score": rules["lead_score"],
+                    "tech_stack_signals": tech,
+                }
+        except Exception as exc:
+            logger.warning("Ollama enrichment failed, using rule-based fallback: %s", exc)
 
     if provider == "custom":
         try:
@@ -143,4 +162,4 @@ def enrich_company(signals: dict[str, Any]) -> dict[str, Any]:
         except Exception as exc:
             logger.warning("Custom enrichment failed, using rule-based fallback: %s", exc)
 
-    return rule_based_enrichment(signals)
+    return rules

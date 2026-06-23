@@ -25,6 +25,7 @@ if (-not (Test-Path $Uvicorn)) {
 }
 
 Write-Host "== KrowLive backend =="
+Ensure-OllamaRunning
 Write-Host "Clearing anything on port $Port..."
 Stop-KrowBackendOnPort -Port $Port
 

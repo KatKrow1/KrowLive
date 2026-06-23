@@ -59,3 +59,43 @@ function Stop-KrowFrontendOnPort {
             taskkill /PID $_.ProcessId /T /F 2>$null | Out-Null
         }
 }
+
+function Ensure-OllamaRunning {
+    param(
+        [string]$BaseUrl = "http://localhost:11434"
+    )
+
+    try {
+        $response = Invoke-WebRequest -Uri $BaseUrl -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop
+        if ($response.StatusCode -eq 200) {
+            Write-Host "Ollama is already running at $BaseUrl"
+            return
+        }
+    } catch {
+        # fall through to start
+    }
+
+    $ollama = Get-Command ollama -ErrorAction SilentlyContinue
+    if (-not $ollama) {
+        Write-Warning "Ollama not found on PATH — install from https://ollama.com or start manually."
+        return
+    }
+
+    Write-Host "Starting Ollama server in background..."
+    Start-Process -FilePath "ollama" -ArgumentList "serve" -WindowStyle Hidden
+
+    $deadline = (Get-Date).AddSeconds(15)
+    while ((Get-Date) -lt $deadline) {
+        try {
+            $check = Invoke-WebRequest -Uri $BaseUrl -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop
+            if ($check.StatusCode -eq 200) {
+                Write-Host "Ollama started at $BaseUrl"
+                return
+            }
+        } catch {
+            Start-Sleep -Milliseconds 500
+        }
+    }
+
+    Write-Warning "Ollama did not respond at $BaseUrl within 15s — enrichment may fall back to heuristics."
+}

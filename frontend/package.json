@@ -9,6 +9,7 @@
     "lint": "node ./node_modules/next/dist/bin/next lint"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.101.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "framer-motion": "^11.15.0",

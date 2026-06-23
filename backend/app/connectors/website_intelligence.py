@@ -12,6 +12,8 @@ import httpx
 from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright
 
+from app.config import settings
+
 ROLE_KEYWORDS = (
     "CEO",
     "Chief Executive Officer",
@@ -184,6 +186,16 @@ HTTP_HEADERS = {
     ),
     "Accept": "text/html,application/xhtml+xml",
 }
+
+_ollama_exec_budget: int | None = None
+
+
+def _reset_ollama_exec_budget() -> None:
+    global _ollama_exec_budget
+    if settings.enrichment_provider == "ollama":
+        _ollama_exec_budget = settings.ollama_max_executive_calls
+    else:
+        _ollama_exec_budget = None
 
 
 @dataclass
@@ -486,6 +498,47 @@ def _confidence(structural: bool, email: str | None, phone: str | None, linkedin
     return "low"
 
 
+def _container_text(element: Any) -> str:
+    return element.get_text(" ", strip=True)[:4000]
+
+
+def _apply_ollama_executive(contact: ExecutiveContact, container_text: str) -> ExecutiveContact | None:
+    """Refine via Ollama when enabled. Returns None to discard; original on fail-safe."""
+    if settings.enrichment_provider != "ollama":
+        return contact
+    global _ollama_exec_budget
+    if _ollama_exec_budget is not None and _ollama_exec_budget <= 0:
+        return contact
+    if _ollama_exec_budget is not None:
+        _ollama_exec_budget -= 1
+    from app.services.ollama_client import refine_executive_from_container
+
+    result = refine_executive_from_container(
+        heuristic_name=contact.name,
+        heuristic_title=contact.title,
+        heuristic_email=contact.email,
+        heuristic_phone=contact.phone,
+        heuristic_linkedin=contact.linkedin_url,
+        heuristic_confidence=contact.extraction_confidence,
+        container_text=container_text,
+        source_page=contact.source_page,
+    )
+    if result is None:
+        return contact
+    if result.get("discarded"):
+        return None
+    return ExecutiveContact(
+        name=result["name"],
+        title=result.get("title"),
+        email=result.get("email"),
+        phone=result.get("phone"),
+        linkedin_url=result.get("linkedin_url"),
+        consent_status=contact.consent_status,
+        source_page=result.get("source_page") or contact.source_page,
+        extraction_confidence=result.get("extraction_confidence", contact.extraction_confidence),
+    )
+
+
 def _extract_structural_pairs(container: Any, page_url: str) -> list[ExecutiveContact]:
     results: list[ExecutiveContact] = []
     card_tags = container.find_all(["div", "li", "article"], recursive=True)
@@ -507,17 +560,19 @@ def _extract_structural_pairs(container: Any, page_url: str) -> list[ExecutiveCo
         email, phone, linkedin = _contacts_in_container(card)
         if not linkedin:
             linkedin = _linkedin_from_element(name_el, person_only=True)
-        results.append(
-            ExecutiveContact(
-                name=name,
-                title=title,
-                email=email,
-                phone=phone,
-                linkedin_url=linkedin,
-                source_page=page_url,
-                extraction_confidence=_confidence(True, email, phone, linkedin),
-            )
+        contact = ExecutiveContact(
+            name=name,
+            title=title,
+            email=email,
+            phone=phone,
+            linkedin_url=linkedin,
+            source_page=page_url,
+            extraction_confidence=_confidence(True, email, phone, linkedin),
         )
+        refined = _apply_ollama_executive(contact, _container_text(card))
+        if refined is None:
+            continue
+        results.append(refined)
     return results
 
 
@@ -555,17 +610,19 @@ def _extract_inline_name_title(soup: BeautifulSoup, page_url: str) -> list[Execu
         email, phone, linkedin = _contacts_in_container(parent)
         if not linkedin:
             linkedin = _linkedin_from_element(tag, person_only=True)
-        results.append(
-            ExecutiveContact(
-                name=name,
-                title=title,
-                email=email,
-                phone=phone,
-                linkedin_url=linkedin,
-                source_page=page_url,
-                extraction_confidence=_confidence(True, email, phone, linkedin),
-            )
+        contact = ExecutiveContact(
+            name=name,
+            title=title,
+            email=email,
+            phone=phone,
+            linkedin_url=linkedin,
+            source_page=page_url,
+            extraction_confidence=_confidence(True, email, phone, linkedin),
         )
+        refined = _apply_ollama_executive(contact, _container_text(parent))
+        if refined is None:
+            continue
+        results.append(refined)
     return results
 
 
@@ -622,17 +679,19 @@ def _extract_proximity_fallback(soup: BeautifulSoup, page_url: str) -> list[Exec
         email, phone, linkedin = _contacts_in_container(parent)
         if not linkedin:
             linkedin = _linkedin_from_element(tag, person_only=True)
-        executives.append(
-            ExecutiveContact(
-                name=name,
-                title=title,
-                email=email,
-                phone=phone,
-                linkedin_url=linkedin,
-                source_page=page_url,
-                extraction_confidence=_confidence(structural, email, phone, linkedin),
-            )
+        contact = ExecutiveContact(
+            name=name,
+            title=title,
+            email=email,
+            phone=phone,
+            linkedin_url=linkedin,
+            source_page=page_url,
+            extraction_confidence=_confidence(structural, email, phone, linkedin),
         )
+        refined = _apply_ollama_executive(contact, _container_text(parent))
+        if refined is None:
+            continue
+        executives.append(refined)
 
     for anchor in soup.find_all("a", href=True):
         href = anchor.get("href", "")
@@ -645,17 +704,20 @@ def _extract_proximity_fallback(soup: BeautifulSoup, page_url: str) -> list[Exec
         title = _extract_role_title(parent.get_text(" ", strip=True) if parent else name)
         email, phone, linkedin = _contacts_in_container(parent) if parent else (None, None, None)
         linkedin = linkedin or href.split("?", 1)[0].rstrip("/")
-        executives.append(
-            ExecutiveContact(
-                name=name,
-                title=title,
-                email=email,
-                phone=phone,
-                linkedin_url=linkedin,
-                source_page=page_url,
-                extraction_confidence=_confidence(bool(parent), email, phone, linkedin),
-            )
+        container = parent or anchor
+        contact = ExecutiveContact(
+            name=name,
+            title=title,
+            email=email,
+            phone=phone,
+            linkedin_url=linkedin,
+            source_page=page_url,
+            extraction_confidence=_confidence(bool(parent), email, phone, linkedin),
         )
+        refined = _apply_ollama_executive(contact, _container_text(container))
+        if refined is None:
+            continue
+        executives.append(refined)
     return executives
 
 
@@ -754,6 +816,7 @@ async def scrape_website(website: str, *, max_pages: int = 4) -> WebsiteIntelRes
     """Scrape a company website; return partial/empty data instead of raising."""
     base_url = _normalize_url(website)
     result = WebsiteIntelResult(website=base_url, success=False)
+    _reset_ollama_exec_budget()
 
     try:
         homepage_html = await _fetch_page(base_url)
