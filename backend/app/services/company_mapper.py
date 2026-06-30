@@ -38,6 +38,13 @@ def row_to_company(row: dict[str, Any], *, include_executives: bool = True) -> C
         state_name = states.get("name") or state_name
         state_slug = states.get("slug")
 
+    lead_status_raw = data.pop("lead_status", None)
+    lead_status = "new"
+    if isinstance(lead_status_raw, dict):
+        lead_status = lead_status_raw.get("status", "new")
+    elif isinstance(lead_status_raw, str):
+        lead_status = lead_status_raw
+
     return Company(
         **{
             k: v
@@ -52,11 +59,13 @@ def row_to_company(row: dict[str, Any], *, include_executives: bool = True) -> C
                 "category_id",
                 "country",
                 "state",
+                "lead_status",
             }
         },
         country=country_code,
         state=state_name,
         state_slug=state_slug,
+        lead_status=lead_status,
         social_links=social,
         tech_stack_signals=[str(s) for s in signals],
         executives=[
@@ -70,6 +79,8 @@ def row_to_company(row: dict[str, Any], *, include_executives: bool = True) -> C
                 linkedin_url=e.get("linkedin_url"),
                 consent_status=e.get("consent_status", "unknown"),
                 extraction_confidence=e.get("extraction_confidence", "low"),
+                source_url=e.get("source_url"),
+                scraped_at=e.get("scraped_at"),
             )
             for e in execs
         ]
@@ -78,5 +89,5 @@ def row_to_company(row: dict[str, Any], *, include_executives: bool = True) -> C
     )
 
 
-COMPANY_SELECT = "*, countries(code, name), states(name, slug)"
+COMPANY_SELECT = "*, countries(code, name), states(name, slug), lead_status(status)"
 COMPANY_DETAIL_SELECT = f"{COMPANY_SELECT}, executives(*)"

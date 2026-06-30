@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 CountryCode = Literal["CA", "AU"]
 CompanySource = Literal["google_places", "csv_upload"]
 ConsentStatus = Literal["unknown", "opted_in", "opted_out"]
+LeadStatusValue = Literal["new", "contacted", "replied", "not_interested"]
 ExtractionConfidence = Literal["high", "medium", "low"]
 JobStatus = Literal["idle", "running", "completed", "failed"]
 
@@ -36,6 +37,8 @@ class Executive(BaseModel):
     linkedin_url: str | None = None
     consent_status: ConsentStatus = "unknown"
     extraction_confidence: ExtractionConfidence = "low"
+    source_url: str | None = None
+    scraped_at: datetime | None = None
 
 
 class CompanyResponse(BaseModel):
@@ -58,6 +61,9 @@ class CompanyResponse(BaseModel):
     source: CompanySource = "google_places"
     social_links: SocialLinks = Field(default_factory=SocialLinks)
     executives: list[Executive] = Field(default_factory=list)
+    last_scraped_at: datetime | None = None
+    source_url: str | None = None
+    lead_status: LeadStatusValue = "new"
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -80,6 +86,10 @@ class StateResponse(BaseModel):
 class CompanySummaryResponse(BaseModel):
     id: str
     name: str
+    lead_score: int | None = None
+    lead_status: LeadStatusValue = "new"
+    last_scraped_at: datetime | None = None
+    website: str | None = None
 
 
 CountryNode = CountryResponse
@@ -124,3 +134,52 @@ class EnrichmentResult(BaseModel):
     summary: str
     lead_score: int
     tech_stack_signals: list[str] = Field(default_factory=list)
+
+
+class LeadStatusUpdate(BaseModel):
+    status: LeadStatusValue
+
+
+class BulkLeadStatusUpdate(BaseModel):
+    company_ids: list[str] = Field(..., min_length=1)
+    status: LeadStatusValue
+
+
+class WebhookCreate(BaseModel):
+    url: str
+
+
+class WebhookResponse(BaseModel):
+    id: str
+    url: str
+    active: bool
+    created_at: datetime | None = None
+
+
+class SavedSearchCreate(BaseModel):
+    name: str
+    industry: str
+    country: CountryCode
+    states: list[str] = Field(default_factory=list)
+    cities: list[str] = Field(default_factory=list)
+    max_results: int = Field(default=5, ge=1, le=20)
+
+
+class SavedSearchResponse(BaseModel):
+    id: str
+    name: str
+    industry: str
+    country: CountryCode
+    states: list[str] = Field(default_factory=list)
+    cities: list[str] = Field(default_factory=list)
+    max_results: int = 5
+    created_at: datetime | None = None
+    last_run_at: datetime | None = None
+    last_result_count: int = 0
+
+
+class SavedSearchRunResponse(BaseModel):
+    saved_search_id: str
+    new_companies: list[CompanySummaryResponse] = Field(default_factory=list)
+    new_count: int = 0
+    total_processed: int = 0

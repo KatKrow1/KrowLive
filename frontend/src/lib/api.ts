@@ -7,6 +7,8 @@ export type SocialLinks = {
   facebook?: string | null;
 };
 
+export type LeadStatus = "new" | "contacted" | "replied" | "not_interested";
+
 export type Executive = {
   id?: string;
   company_id?: string | null;
@@ -17,6 +19,8 @@ export type Executive = {
   linkedin_url?: string | null;
   consent_status: "unknown" | "opted_in" | "opted_out";
   extraction_confidence?: "high" | "medium" | "low";
+  source_url?: string | null;
+  scraped_at?: string | null;
 };
 
 /** Full company — id is UUID string; country_id/state_id are integers. */
@@ -40,11 +44,45 @@ export type Company = {
   source: "google_places" | "csv_upload";
   social_links?: SocialLinks;
   executives?: Executive[];
+  last_scraped_at?: string | null;
+  source_url?: string | null;
+  lead_status?: LeadStatus;
 };
 
 export type CompanySummary = {
   id: string;
   name: string;
+  website?: string | null;
+  lead_score?: number | null;
+  lead_status?: LeadStatus;
+  last_scraped_at?: string | null;
+};
+
+export type SavedSearch = {
+  id: string;
+  name: string;
+  industry: string;
+  country: "CA" | "AU";
+  states: string[];
+  cities: string[];
+  max_results: number;
+  created_at?: string | null;
+  last_run_at?: string | null;
+  last_result_count: number;
+};
+
+export type SavedSearchRunResult = {
+  saved_search_id: string;
+  new_companies: CompanySummary[];
+  new_count: number;
+  total_processed: number;
+};
+
+export type Webhook = {
+  id: string;
+  url: string;
+  active: boolean;
+  created_at?: string | null;
 };
 
 export type CompanyDetailResponse = {
@@ -159,4 +197,61 @@ export const api = {
     }
   },
   getLastCsvResult: () => request<CsvUploadResult>("/upload/csv/last"),
+
+  exportCompaniesCsv: (params: Record<string, string | number | undefined>) => {
+    const qs = new URLSearchParams();
+    qs.set("format", "csv");
+    Object.entries(params).forEach(([k, v]) => {
+      if (v != null && v !== "") qs.set(k, String(v));
+    });
+    const url = `${API_URL}/companies/export?${qs.toString()}`;
+    return fetch(url).then(async (res) => {
+      if (!res.ok) throw new ApiError(`Export failed (${res.status})`, url);
+      const blob = await res.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "krowlive-companies.csv";
+      a.click();
+      URL.revokeObjectURL(a.href);
+    });
+  },
+
+  updateCompanyStatus: (id: string, status: LeadStatus) =>
+    request<{ company_id: string; status: LeadStatus }>(`/companies/${id}/status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    }),
+
+  bulkUpdateStatus: (company_ids: string[], status: LeadStatus) =>
+    request<{ updated: number; status: LeadStatus }>("/companies/status/bulk", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ company_ids, status }),
+    }),
+
+  rescrapeCompany: (id: string) =>
+    request<CompanyDetailResponse>(`/companies/${id}/rescrape`, { method: "POST" }),
+
+  getSavedSearches: () => request<SavedSearch[]>("/saved-searches"),
+  createSavedSearch: (body: Omit<SavedSearch, "id" | "last_run_at" | "last_result_count" | "created_at">) =>
+    request<SavedSearch>("/saved-searches", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  runSavedSearch: (id: string) =>
+    request<SavedSearchRunResult>(`/saved-searches/${id}/run`, { method: "POST" }),
+  deleteSavedSearch: (id: string) =>
+    request<{ deleted: string }>(`/saved-searches/${id}`, { method: "DELETE" }),
+
+  getWebhooks: () => request<Webhook[]>("/integrations/webhooks"),
+  createWebhook: (url: string) =>
+    request<Webhook>("/integrations/webhook", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url }),
+    }),
+  deleteWebhook: (id: string) =>
+    request<{ deleted: string }>(`/integrations/webhooks/${id}`, { method: "DELETE" }),
 };

@@ -86,6 +86,8 @@ CREATE TABLE IF NOT EXISTS companies (
   tech_stack_signals  JSONB NOT NULL DEFAULT '[]'::jsonb,
   social_links        JSONB NOT NULL DEFAULT '{}'::jsonb,
   source              company_source NOT NULL DEFAULT 'google_places',
+  last_scraped_at     TIMESTAMPTZ,
+  source_url          TEXT,
   created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -112,6 +114,8 @@ CREATE TABLE IF NOT EXISTS executives (
   linkedin_url    TEXT,
   consent_status  consent_status NOT NULL DEFAULT 'unknown',
   extraction_confidence TEXT NOT NULL DEFAULT 'low' CHECK (extraction_confidence IN ('high', 'medium', 'low')),
+  source_url      TEXT,
+  scraped_at      TIMESTAMPTZ,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -139,6 +143,36 @@ CREATE TABLE IF NOT EXISTS jobs (
 INSERT INTO jobs (job_type, status, message)
 SELECT 'discovery', 'idle', 'Ready'
 WHERE NOT EXISTS (SELECT 1 FROM jobs LIMIT 1);
+
+-- ---------------------------------------------------------------------------
+-- lead_status, saved_searches, webhooks (see migration_features.sql)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS lead_status (
+  company_id UUID PRIMARY KEY REFERENCES companies (id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'new'
+    CHECK (status IN ('new', 'contacted', 'replied', 'not_interested')),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS saved_searches (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  industry TEXT NOT NULL,
+  country TEXT NOT NULL,
+  states JSONB NOT NULL DEFAULT '[]'::jsonb,
+  cities JSONB NOT NULL DEFAULT '[]'::jsonb,
+  max_results INTEGER NOT NULL DEFAULT 5,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_run_at TIMESTAMPTZ,
+  last_result_count INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS webhooks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  url TEXT NOT NULL,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
 -- ---------------------------------------------------------------------------
 -- updated_at trigger

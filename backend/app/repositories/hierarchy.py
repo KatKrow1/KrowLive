@@ -54,16 +54,41 @@ class HierarchyRepository:
         return result
 
     def list_companies(self, state_id: Id) -> list[dict[str, Any]]:
-        rows = (
-            self.db.table("companies")
-            .select("id, name")
-            .eq("state_id", state_id)
-            .order("name")
-            .execute()
-            .data
-            or []
-        )
-        return [{"id": r["id"], "name": r["name"]} for r in rows]
+        select = "id, name, website, lead_score, last_scraped_at, lead_status(status)"
+        try:
+            rows = (
+                self.db.table("companies")
+                .select(select)
+                .eq("state_id", state_id)
+                .order("name")
+                .execute()
+                .data
+                or []
+            )
+        except Exception:
+            rows = (
+                self.db.table("companies")
+                .select("id, name, website, lead_score")
+                .eq("state_id", state_id)
+                .order("name")
+                .execute()
+                .data
+                or []
+            )
+        result = []
+        for r in rows:
+            ls = r.get("lead_status") or {}
+            result.append(
+                {
+                    "id": r["id"],
+                    "name": r["name"],
+                    "website": r.get("website"),
+                    "lead_score": r.get("lead_score"),
+                    "last_scraped_at": r.get("last_scraped_at"),
+                    "lead_status": ls.get("status", "new") if isinstance(ls, dict) else "new",
+                }
+            )
+        return result
 
     def get_company(self, company_id: Id) -> dict[str, Any] | None:
         from app.services.company_mapper import COMPANY_DETAIL_SELECT

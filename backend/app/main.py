@@ -13,7 +13,7 @@ from postgrest.exceptions import APIError as PostgrestAPIError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.config import settings
-from app.routers import companies, discovery, hierarchy, stats, status, upload
+from app.routers import companies, discovery, hierarchy, integrations, saved_searches, stats, status, upload
 
 logger = logging.getLogger("krowlive")
 logging.basicConfig(level=logging.INFO)
@@ -99,6 +99,8 @@ app.include_router(hierarchy.router)
 app.include_router(companies.router)
 app.include_router(stats.router)
 app.include_router(discovery.router)
+app.include_router(saved_searches.router)
+app.include_router(integrations.router)
 app.include_router(upload.router)
 app.include_router(status.router)
 

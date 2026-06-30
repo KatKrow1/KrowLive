@@ -167,6 +167,29 @@ function CompanyDetailBody({ company, loading }: { company: Company; loading?: b
                   <dt className="text-muted-foreground">Source</dt>
                   <dd>{company.source === "google_places" ? "Google Places" : "CSV upload"}</dd>
                 </div>
+                {company.source_url && (
+                  <div className="flex gap-2 border-t border-border/40 pt-2">
+                    <ExternalLink className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                    <dd className="text-xs break-all">
+                      <span className="text-muted-foreground">Scraped from: </span>
+                      <a href={company.source_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                        {company.source_url}
+                      </a>
+                    </dd>
+                  </div>
+                )}
+                {company.last_scraped_at && (
+                  <div className="flex justify-between border-t border-border/40 pt-2">
+                    <dt className="text-muted-foreground">Last scraped</dt>
+                    <dd className="text-xs">{new Date(company.last_scraped_at).toLocaleString()}</dd>
+                  </div>
+                )}
+                {company.lead_status && (
+                  <div className="flex justify-between border-t border-border/40 pt-2">
+                    <dt className="text-muted-foreground">Lead status</dt>
+                    <dd className="capitalize">{company.lead_status.replace("_", " ")}</dd>
+                  </div>
+                )}
               </dl>
             </section>
 
@@ -310,6 +333,21 @@ function CompanyDetailBody({ company, loading }: { company: Company; loading?: b
                               </a>
                             )}
                           </div>
+                          {(exec.source_url || exec.scraped_at) && (
+                            <p className="mt-2 text-xs text-muted-foreground">
+                              {exec.source_url && (
+                                <>
+                                  Source:{" "}
+                                  <a href={exec.source_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                                    {exec.source_url.replace(/^https?:\/\//, "").slice(0, 48)}
+                                  </a>
+                                </>
+                              )}
+                              {exec.scraped_at && (
+                                <> · Scraped {new Date(exec.scraped_at).toLocaleDateString()}</>
+                              )}
+                            </p>
+                          )}
                         </div>
                       </div>
                     </div>

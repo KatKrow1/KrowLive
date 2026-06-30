@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, ExternalLink, Loader2, MapPin, Radar, Sparkles } from "lucide-react";
+import { Check, ExternalLink, Loader2, MapPin, Radar, Sparkles, Bookmark } from "lucide-react";
 import { api, JobStatus } from "@/lib/api";
 import { useAppContext } from "@/lib/context";
 import {
@@ -33,6 +33,8 @@ export default function DiscoveryPage() {
   const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
+  const [saveName, setSaveName] = useState("");
+  const [saveMsg, setSaveMsg] = useState<string | null>(null);
 
   const states = country === "CA" ? [...CA_PROVINCES] : [...AU_STATES];
   const resolvedIndustry = industry === "Custom" ? customIndustry.trim() : industry;
@@ -110,6 +112,24 @@ export default function DiscoveryPage() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Discovery failed");
       setRunning(false);
+    }
+  };
+
+  const saveSearch = async () => {
+    const name = saveName.trim() || `${resolvedIndustry} — ${cities.join(", ")}`;
+    setSaveMsg(null);
+    try {
+      await api.createSavedSearch({
+        name,
+        industry: resolvedIndustry,
+        country,
+        states: selectedStates,
+        cities,
+        max_results: maxResults,
+      });
+      setSaveMsg(`Saved as “${name}”`);
+    } catch (e) {
+      setSaveMsg(e instanceof Error ? e.message : "Save failed");
     }
   };
 
@@ -294,6 +314,28 @@ export default function DiscoveryPage() {
               )}
 
               {error && <p className="text-sm text-red-400">{error}</p>}
+
+              <div className="rounded-lg border border-border/60 bg-muted/10 p-4 space-y-2">
+                <p className="text-sm font-medium flex items-center gap-2">
+                  <Bookmark className="h-4 w-4" /> Save this search
+                </p>
+                <input
+                  type="text"
+                  value={saveName}
+                  onChange={(e) => setSaveName(e.target.value)}
+                  placeholder={`${resolvedIndustry} — ${cities[0] ?? "search"}`}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={saveSearch}
+                  disabled={!resolvedIndustry}
+                  className="rounded-lg border border-primary/40 px-3 py-2 text-sm hover:bg-primary/10"
+                >
+                  Save for later runs
+                </button>
+                {saveMsg && <p className="text-xs text-muted-foreground">{saveMsg}</p>}
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
